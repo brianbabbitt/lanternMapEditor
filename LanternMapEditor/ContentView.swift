@@ -15,6 +15,9 @@ struct TileView: View {
     @State private var placedTiles: [(image: NSImage, position: CGPoint)] = [] // Track placed tiles
     @State private var draggingTile: NSImage? = nil // Tile currently being dragged
     @State private var draggingPosition: CGPoint = .zero // Position of the dragged tile
+    @State private var hoveredTileIndex: Int? = nil // Track the hovered tile
+    @State private var showPopoverForTile: Int? = nil // Track the tile for which the popover is shown
+    @State private var foregroundTiles: Set<Int> = [] // Set to track foreground tiles
     
     var body: some View {
         HStack {
@@ -27,12 +30,27 @@ struct TileView: View {
                             Image(nsImage: tile)
                                 .resizable()
                                 .frame(width: tileSize.width, height: tileSize.height)
-                                .border(Color.gray)
+                                .border(
+                                    hoveredTileIndex == index ? Color.blue : Color.gray, // Blue outline on hover
+                                    width: 2
+                                )
+                                .onHover { isHovering in
+                                    hoveredTileIndex = isHovering ? index : nil // Update hover state
+                                }
                                 .onDrag {
                                     self.draggingTile = tile
                                     return NSItemProvider(object: tile)
                                 }
                                 .padding(.top, 2)
+                                .onTapGesture {
+                                    // Detect if the Option key is pressed
+                                    if NSEvent.modifierFlags.contains(.option) {
+                                        showPopoverForTile = index // Show the popover for this tile
+                                    }
+                                }
+//                                .popover(item: $showPopoverForTile) { index in
+//                                    TilePopover(tileIndex: index, foregroundTiles: $foregroundTiles)
+//                                }
                             Text("\(index + 1)")
                                 .font(.caption)
                         }
@@ -40,13 +58,13 @@ struct TileView: View {
                 }
                 .padding()
             }
-            .frame(width: 200) // Fixed width for the picker
+            .frame(width: 200)
             
-            Divider() // Divider between picker and workspace
+            Divider()
             
             // Workspace Grid
             VStack {
-                Spacer().frame(height: 16) // Add space at the top of the workspace
+                Spacer().frame(height: 16)
                 ZStack {
                     GeometryReader { geometry in
                         let columns = Int(geometry.size.width / tileSize.width)
@@ -57,7 +75,7 @@ struct TileView: View {
                             ForEach(0..<columns, id: \.self) { col in
                                 Rectangle()
                                     .stroke(Color.gray, lineWidth: 1)
-                                    .frame(width: tileSize.width, height: tileSize.height)
+                                    .frame(width: tileSize.width+2, height: tileSize.height+2)
                                     .position(
                                         CGPoint(
                                             x: CGFloat(col) * tileSize.width + tileSize.width / 2,
@@ -93,7 +111,10 @@ struct TileView: View {
                                             let gridY = round(value.location.y / tileSize.height) * tileSize.height + tileSize.height / 2
                                             let snappedPosition = CGPoint(x: gridX, y: gridY)
                                             
+                                            
+                                            if !placedTiles.contains(where: { $0.position == snappedPosition }) {
                                             self.placedTiles.append((image: draggingTile, position: snappedPosition))
+                                            }
                                             self.draggingTile = nil
                                         }
                                 )
@@ -127,10 +148,52 @@ struct TileView: View {
     }
 }
 
+struct TilePopover: View {
+    let tileIndex: Int
+    @Binding var foregroundTiles: Set<Int>
+    
+    var body: some View {
+        VStack {
+            Text("Tile Options")
+                .font(.headline)
+            Toggle("Set as Foreground Tile", isOn: Binding(
+                get: { foregroundTiles.contains(tileIndex) },
+                set: { newValue in
+                    if newValue {
+                        foregroundTiles.insert(tileIndex)
+                    } else {
+                        foregroundTiles.remove(tileIndex)
+                    }
+                }
+            ))
+            .padding()
+        }
+        .frame(width: 200, height: 100)
+    }
+}
+
 struct ContentView: View {
     var body: some View {
         if let image = NSImage(named: "lantern_tileset_2_sheet") { // Replace "example" with your PNG name in the assets
             TileView(image: image)
+                .toolbar {
+                    ToolbarItem(placement: .primaryAction) {
+                        Button(action: {
+                            print("Export Map button clicked")
+                        }) {
+                            Label("Export Map", systemImage: "square.and.arrow.down")
+                        }
+                        .help("Export Map")
+                    }
+                    ToolbarItem(placement: .automatic) {
+                        Button(action: {
+                            print("Settings tapped")
+                        }) {
+                            Label("Settings", systemImage: "gearshape")
+                        }
+                        .help("Help me")
+                    }
+                }
         } else {
             Text("Image not found")
                 .foregroundColor(.red)
@@ -188,7 +251,7 @@ struct MyApp: App {
 //                let rect = CGRect(x: x, y: y, width: tileSize.width, height: tileSize.height)
 //                
 //                if let tileCGImage = cgImage.cropping(to: rect) {
-//                    let tileNSImage = NSImage(cgImage: tileCGImage, size: tileSize)
+//                    let tileNSImage = NSImage(cgImage: tileCGImage, size: tileSize.size)
 //                    tiles.append(tileNSImage)
 //                }
 //            }
